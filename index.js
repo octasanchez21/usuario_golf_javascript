@@ -1,6 +1,18 @@
 import pkg from "@tago-io/sdk";
 import { DigestClient } from "digest-fetch";
 import fs from "fs";
+const express = require('express');
+const app = express();
+
+const PORT = process.env.PORT || 3000;  // Render asignará un puerto automáticamente
+
+app.get('/', (req, res) => {
+    res.send('Backend en Render funcionando!');
+});
+
+app.listen(PORT, () => {
+    console.log(`Servidor corriendo en el puerto ${PORT}`);
+});
 
 const { Utils, Analysis, Device } = pkg;
 
