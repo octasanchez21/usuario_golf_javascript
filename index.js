@@ -1,28 +1,21 @@
 import pkg from "@tago-io/sdk";
 import { DigestClient } from "digest-fetch";
 import fs from "fs";
-const express = require('express');
-const app = express();
 
-const PORT = process.env.PORT || 3000;  // Render asignará un puerto automáticamente
-
-app.get('/', (req, res) => {
-    res.send('Backend en Render funcionando!');
-});
-
-app.listen(PORT, () => {
-    console.log(`Servidor corriendo en el puerto ${PORT}`);
-});
 
 const { Utils, Analysis, Device } = pkg;
 
+import 'dotenv/config';
+
+
 // Credenciales de autenticación
-const username = "admin";
-const password = "Inteliksa6969";
+const username = process.env.USERNAME;
+const password = process.env.PASSWORD;
 
 // URL base del dispositivo Hikvision
-const host = "http://34.221.158.219";
-const devIndexAcceso = "F5487AA0-2485-4CFB-9304-835DCF118B43";
+const host = process.env.HOST;
+const devIndexAcceso = process.env.DEV_INDEX_ACCESO;
+
 
 // Función para obtener los usuarios de Hikvision
 async function getHikvisionUsers(client) {
@@ -225,5 +218,5 @@ async function index(context) {
 }
 
 export default new Analysis(index, {
-  token: "a-6d6726c2-f167-4610-a9e5-5a08a92b6bb3",
+  token: process.env.ANALYSIS_TOKEN,
 });
