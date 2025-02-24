@@ -2,7 +2,7 @@ import pkg from "@tago-io/sdk";
 import { DigestClient } from "digest-fetch";
 import fs from "fs";
 import 'dotenv/config';
-const express = require('express');
+import express from "express";
 
 
 
@@ -14,11 +14,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-    res.send('Servidor corriendo correctamente');
+  res.send('Servidor corriendo correctamente');
 });
 
 app.listen(PORT, () => {
-    console.log(`Servidor corriendo en el puerto ${PORT}`);
+  console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
 
 
