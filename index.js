@@ -1,11 +1,16 @@
 import pkg from "@tago-io/sdk";
 import { DigestClient } from "digest-fetch";
 import fs from "fs";
+import express from "express";
+import 'dotenv/config';
 
 
 const { Utils, Analysis, Device } = pkg;
 
-import 'dotenv/config';
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.use(express.json());
 
 
 // Credenciales de autenticación
