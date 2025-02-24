@@ -1,16 +1,25 @@
 import pkg from "@tago-io/sdk";
 import { DigestClient } from "digest-fetch";
 import fs from "fs";
-import express from "express";
 import 'dotenv/config';
+const express = require('express');
+
 
 
 const { Utils, Analysis, Device } = pkg;
 
 const app = express();
-const port = process.env.PORT || 3000;
 
-app.use(express.json());
+// Usa el puerto proporcionado por Render o el 3000 por defecto
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+    res.send('Servidor corriendo correctamente');
+});
+
+app.listen(PORT, () => {
+    console.log(`Servidor corriendo en el puerto ${PORT}`);
+});
 
 
 // Credenciales de autenticación
