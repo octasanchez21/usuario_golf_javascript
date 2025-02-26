@@ -3,7 +3,7 @@ import { DigestClient } from "digest-fetch";
 import fs from "fs";
 import 'dotenv/config';
 import express from "express";
-
+import axios from "axios";
 
 
 const { Utils, Analysis, Device } = pkg;
@@ -23,13 +23,41 @@ app.listen(PORT, () => {
 
 
 // Credenciales de autenticación
-const username = process.env.USERNAME;
-const password = process.env.PASSWORD;
+const username = process.env.HIKVISION_USERNAME;
+const password = process.env.HIKVISION_PASSWORD;
+const host = process.env.HIKVISION_HOST;
+const devIndexAcceso = process.env.HIKVISION_DEV_INDEX;
 
-// URL base del dispositivo Hikvision
-const host = process.env.HOST;
-const devIndexAcceso = process.env.DEV_INDEX_ACCESO;
+const SAP_URL = process.env.SAP_URL;
+const SAP_AUTH = process.env.SAP_AUTH;
 
+
+// Función para obtener los usuarios de SAP
+async function getSAPUsers() {
+  try {
+    const response = await axios.get(SAP_URL, {
+      headers: {
+        'Authorization': SAP_AUTH
+      }
+    });
+
+    if (response.data && response.data.correcto && Array.isArray(response.data.contenido)) {
+      return response.data.contenido.map(user => ({
+        employeeNo: user.employeeNo,
+        name: user.name,
+        pin: user.pin,
+        valid: user.valid.enable === 'asset',
+        belongGroup: user.valid.belongGroup,
+        faceURL: user.faceURL
+      }));
+    } else {
+      throw new Error('Respuesta inesperada de SAP');
+    }
+  } catch (error) {
+    console.error('Error al obtener usuarios de SAP:', error.message);
+    return [];
+  }
+}
 
 // Función para obtener los usuarios de Hikvision
 async function getHikvisionUsers(client) {
@@ -156,81 +184,45 @@ async function deleteHikvisionUser(client, employeeNo) {
 }
 
 // Función principal del análisis
-async function index(context) {
-  const env = Utils.envToJson(context.environment);
-  const device = new Device({ token: env.device_token });
-
+async function syncUsers() {
   const client = new DigestClient(username, password);
-
-  // Leer el archivo JSON
-  const usuarios = JSON.parse(fs.readFileSync("./usuarios_sap.json", "utf8"));
-
-  // Obtener los usuarios de Hikvision
+  const sapUsers = await getSAPUsers();
   const hikvisionUsers = await getHikvisionUsers(client);
 
-  // Crear un conjunto de employeeNo de los usuarios de Hikvision
-  const hikvisionEmployeeNos = new Set(hikvisionUsers.map((user) => user.employeeNo.toString()));
+  const hikvisionEmployeeNos = new Set(hikvisionUsers.map(user => user.employeeNo.toString()));
+  const sapEmployeeNos = new Set(sapUsers.map(usuario => usuario.employeeNo.toString()));
 
-  // Crear un conjunto de employeeNo de los usuarios de SAP
-  const sapEmployeeNos = new Set(usuarios.map((usuario) => usuario.employeeNo.toString()));
-
-  // Identificar usuarios nuevos (que están en SAP pero no en Hikvision)
-  const nuevosUsuarios = usuarios.filter((usuario) => !hikvisionEmployeeNos.has(usuario.employeeNo.toString()));
-
-  // Agregar nuevos usuarios si es necesario
-  if (nuevosUsuarios.length > 0) {
-    console.log("Usuarios nuevos encontrados. Agregando...");
-    for (const usuario of nuevosUsuarios) {
-      const result = await addHikvisionUser(client, usuario);
-      if (result) {
-        console.log(`Usuario ${usuario.employeeNo} (${usuario.name}) agregado.`);
-      }
-    }
-  } else {
-    console.log("No hay nuevos usuarios para agregar.");
+  // Usuarios que se agregarán a Hikvision
+  const nuevosUsuarios = sapUsers.filter(usuario => !hikvisionEmployeeNos.has(usuario.employeeNo.toString()));
+  console.log(`🟢 Usuarios CREADOS (${nuevosUsuarios.length}):`);
+  nuevosUsuarios.forEach(usuario => console.log(`   ➕ ${usuario.employeeNo} - ${usuario.name}`));
+  for (const usuario of nuevosUsuarios) {
+    await addHikvisionUser(client, usuario);
   }
 
-  // Comparar y actualizar usuarios existentes
-  const usuariosParaActualizar = usuarios.filter((usuario) => {
-    const hikvisionUser = hikvisionUsers.find((user) => user.employeeNo.toString() === usuario.employeeNo.toString());
-    return (
-      hikvisionUser &&
-      (hikvisionUser.name !== usuario.name || hikvisionUser.Valid.enable !== usuario.valid.enable)
-    );
+  // Usuarios que necesitan actualización en Hikvision
+  const usuariosParaActualizar = sapUsers.filter(usuario => {
+    const hikvisionUser = hikvisionUsers.find(user => user.employeeNo.toString() === usuario.employeeNo.toString());
+    return hikvisionUser && (hikvisionUser.name !== usuario.name || hikvisionUser.Valid.enable !== usuario.valid);
   });
-
-  // Si hay usuarios para actualizar, realizar la actualización
-  if (usuariosParaActualizar.length > 0) {
-    console.log("Usuarios para actualizar encontrados. Actualizando...");
-    for (const usuario of usuariosParaActualizar) {
-      const result = await updateHikvisionUser(client, usuario);
-      if (result) {
-        console.log(`Usuario ${usuario.employeeNo} (${usuario.name}) actualizado.`);
-      }
-    }
-  } else {
-    console.log("No hay usuarios para actualizar.");
+  console.log(`🟡 Usuarios ACTUALIZADOS (${usuariosParaActualizar.length}):`);
+  usuariosParaActualizar.forEach(usuario => console.log(`   🔄 ${usuario.employeeNo} - ${usuario.name}`));
+  for (const usuario of usuariosParaActualizar) {
+    await updateHikvisionUser(client, usuario);
   }
 
-  // Identificar usuarios eliminados (que están en Hikvision pero no en SAP)
-  const usuariosParaEliminar = hikvisionUsers.filter((user) => !sapEmployeeNos.has(user.employeeNo.toString()));
-
-  // Eliminar usuarios si es necesario
-  if (usuariosParaEliminar.length > 0) {
-    console.log("Usuarios eliminados encontrados. Eliminando...");
-    for (const user of usuariosParaEliminar) {
-      const result = await deleteHikvisionUser(client, user.employeeNo);
-      if (result) {
-        console.log(`Usuario ${user.employeeNo} eliminado.`);
-      }
-    }
-  } else {
-    console.log("No hay usuarios para eliminar.");
+  // Usuarios que ya no existen en SAP y deben ser eliminados de Hikvision
+  const usuariosParaEliminar = hikvisionUsers.filter(user => !sapEmployeeNos.has(user.employeeNo.toString()));
+  console.log(`🔴 Usuarios ELIMINADOS (${usuariosParaEliminar.length}):`);
+  usuariosParaEliminar.forEach(user => console.log(`   ❌ ${user.employeeNo} - ${user.name}`));
+  for (const user of usuariosParaEliminar) {
+    await deleteHikvisionUser(client, user.employeeNo);
   }
 
-  console.log("Proceso completado.");
+  console.log("✅ Proceso completado.");
 }
 
-export default new Analysis(index, {
+
+export default new Analysis(syncUsers, {
   token: process.env.ANALYSIS_TOKEN,
 });
