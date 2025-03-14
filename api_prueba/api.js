@@ -15,7 +15,7 @@ const datosSocios = {
         {
             "employeeNo": "S01461",
             "faceURL": "http://sap-alb-1675436339.us-east-1.elb.amazonaws.com/FotosSocios?imageName=S01461.jpg",
-            "name": "LUIS RIOS CORONA",
+            "name": "LUIS RIOS CORONITA",
             "pin": "",
             "valid": {
                 "belongGroup": "accionista",
