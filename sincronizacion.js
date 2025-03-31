@@ -146,44 +146,133 @@ async function deleteHikvisionUser(client, employeeNo, devIndex) {
 }
 
 // Sincronizar usuarios
-async function syncUsers() {
-  const client = new DigestClient(username, password);
-  const sapUsers = await getSAPUsers();
-  const hikvisionUsers = await getHikvisionUsers(client);
+async function syncUsers(context) {
+  const env = Utils.envToJson(context.environment);
+  const device = new Device({ token: env.device_token });
+  let errorCount = 0;
 
-  const hikvisionEmployeeNos = new Set(hikvisionUsers.map(user => user.employeeNo.toString()));
-  const sapEmployeeNos = new Set(sapUsers.map(usuario => usuario.employeeNo.toString()));
+  // Definir groupId antes de cualquier uso
+  const groupId = (Date.now() + Math.floor(Math.random() * 1000)).toString(); // Convertimos a string
+  
+  try {
+    const client = new DigestClient(username, password);
+    const sapUsers = await getSAPUsers();
+    const hikvisionUsers = await getHikvisionUsers(client);
 
-  // Agregar nuevos usuarios
-  const nuevosUsuarios = sapUsers.filter(usuario => !hikvisionEmployeeNos.has(usuario.employeeNo.toString()));
-  console.log(`🟢 Usuarios CREADOS (${nuevosUsuarios.length}):`);
-  nuevosUsuarios.forEach(usuario => console.log(`   ➕ ${usuario.employeeNo} - ${usuario.name}`));
-  for (const usuario of nuevosUsuarios) {
-    await executeOnDevices(client, addHikvisionUser, usuario);
+    const hikvisionEmployeeNos = new Set(hikvisionUsers.map(user => user.employeeNo.toString()));
+    const sapEmployeeNos = new Set(sapUsers.map(usuario => usuario.employeeNo.toString()));
+
+    // Agregar nuevos usuarios
+    const nuevosUsuarios = sapUsers.filter(usuario => !hikvisionEmployeeNos.has(usuario.employeeNo.toString()));
+
+    // Crear el objeto de datos con el mismo groupId para todas las variables
+    const createdUsersData = {
+      variable: "created_users",
+      value: `${nuevosUsuarios.length} 🟢`,
+      group: groupId
+    };
+    await device.sendData(createdUsersData);
+    console.log(`🟢 Usuarios CREADOS (${nuevosUsuarios.length}):`);
+
+    nuevosUsuarios.forEach(usuario => console.log(`   ➕ ${usuario.employeeNo} - ${usuario.name}`));
+
+    for (const usuario of nuevosUsuarios) {
+      try {
+        await executeOnDevices(client, addHikvisionUser, usuario);
+
+        const userCreatedData = {
+          variable: "users_created",
+          value: `(${usuario.employeeNo}) ${usuario.name}`,
+          group: groupId
+        };
+        await device.sendData(userCreatedData);
+
+      } catch (error) {
+        console.error(`Error al agregar usuario ${usuario.employeeNo}:`, error);
+        errorCount++;
+      }
+    }
+
+    // Actualizar usuarios existentes
+    const usuariosParaActualizar = sapUsers.filter(usuario => {
+      const hikvisionUser = hikvisionUsers.find(user => user.employeeNo.toString() === usuario.employeeNo.toString());
+      return hikvisionUser && (hikvisionUser.name !== usuario.name || hikvisionUser.Valid.enable !== usuario.valid);
+    });
+
+    const updatedUsersData = {
+      variable: "updated_users",
+      value: `${usuariosParaActualizar.length} 🟡`,
+      group: groupId
+    };
+    await device.sendData(updatedUsersData);
+    console.log(`🟡 Usuarios ACTUALIZADOS (${usuariosParaActualizar.length}):`);
+
+    usuariosParaActualizar.forEach(usuario => console.log(`   ✏️ ${usuario.employeeNo} - ${usuario.name}`));
+
+    for (const usuario of usuariosParaActualizar) {
+      try {
+        await executeOnDevices(client, updateHikvisionUser, usuario);
+
+        const userUpdateData = {
+          variable: "users_update",
+          value: `(${usuario.employeeNo}) ${usuario.name}`,
+          group: groupId
+        };
+        await device.sendData(userUpdateData);
+
+      } catch (error) {
+        console.error(`Error al actualizar usuario ${usuario.employeeNo}:`, error);
+        errorCount++;
+      }
+    }
+
+    // Eliminar usuarios que ya no existen en SAP
+    const usuariosParaEliminar = hikvisionUsers.filter(user => !sapEmployeeNos.has(user.employeeNo.toString()));
+
+    const deletedUsersData = {
+      variable: "deleted_users",
+      value: `${usuariosParaEliminar.length} 🔴`,
+      group: groupId
+    };
+    await device.sendData(deletedUsersData);
+    console.log(`🔴 Usuarios ELIMINADOS (${usuariosParaEliminar.length}):`);
+
+    usuariosParaEliminar.forEach(user => console.log(`   ❌ ${user.employeeNo} - ${user.name}`));
+
+    for (const user of usuariosParaEliminar) {
+      try {
+        await executeOnDevices(client, deleteHikvisionUser, user.employeeNo);
+
+        const userDeleteData = {
+          variable: "users_deleted",
+          value: `(${user.employeeNo}) ${user.name}`,
+          group: groupId
+        };
+        await device.sendData(userDeleteData);
+
+      } catch (error) {
+        console.error(`Error al eliminar usuario ${user.employeeNo}:`, error);
+        errorCount++;
+      }
+    }
+
+    console.log("✅ Sincronización completada.");
+
+  } catch (error) {
+    console.error("Error en la sincronización general:", error);
+    errorCount++;
   }
 
-  // Actualizar usuarios existentes
-  const usuariosParaActualizar = sapUsers.filter(usuario => {
-    const hikvisionUser = hikvisionUsers.find(user => user.employeeNo.toString() === usuario.employeeNo.toString());
-    return hikvisionUser && (hikvisionUser.name !== usuario.name || hikvisionUser.Valid.enable !== usuario.valid);
-  });
-  console.log(`🟡 Usuarios ACTUALIZADOS (${usuariosParaActualizar.length}):`);
-  usuariosParaActualizar.forEach(usuario => console.log(`   ✏️ ${usuario.employeeNo} - ${usuario.name}`));
-
-  for (const usuario of usuariosParaActualizar) {
-    await executeOnDevices(client, updateHikvisionUser, usuario);
-  }
-
-  // Eliminar usuarios que ya no existen en SAP
-  const usuariosParaEliminar = hikvisionUsers.filter(user => !sapEmployeeNos.has(user.employeeNo.toString()));
-  console.log(`🔴 Usuarios ELIMINADOS (${usuariosParaEliminar.length}):`);
-  usuariosParaEliminar.forEach(user => console.log(`   ❌ ${user.employeeNo} - ${user.name}`));
-
-  for (const user of usuariosParaEliminar) {
-    await executeOnDevices(client, deleteHikvisionUser, user.employeeNo);
-  }
-
+  // Enviar la cantidad de errores detectados
+  const errorData = {
+    variable: "errors",
+    value: `${errorCount}`,
+    group: groupId
+  };
+  await device.sendData(errorData);
+  console.log(`❗ Errores detectados: ${errorCount}`);
   console.log("✅ Sincronización completada.");
 }
+ 
 
 export default new Analysis(syncUsers, { token: process.env.ANALYSIS_TOKEN });
