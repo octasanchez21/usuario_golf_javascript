@@ -60,7 +60,17 @@ const datosSocios = {
                 "enable": true,
                 "belongGroup": "accionista"
             },
-            "faceURL": "https://t4.ftcdn.net/jpg/00/85/77/75/360_F_85777561_m6EMdjM6Knkz7OLJmN5zr5ZeK359S3G5.jpg"
+            "faceURL": "http://sap-alb-1675436339.us-east-1.elb.amazonaws.com/FotosSocios?imageName=S03477.jpg"
+        },
+        {
+            "employeeNo": "S000938",
+            "name": "Julian Alvarez",
+            "pin": "",
+            "valid": {
+                "enable": true,
+                "belongGroup": "accionista"
+            },
+            "faceURL": "http://sap-alb-1675436339.us-east-1.elb.amazonaws.com/FotosSocios?imageName=S03477.jpg"
         },
     ],
     "correcto": true,
